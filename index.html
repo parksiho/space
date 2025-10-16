@@ -114,6 +114,13 @@
             </button>
         </div>
 
+        <!-- 스테이지 클리어 화면 -->
+        <div id="stage-clear" class="hidden fixed inset-0 flex flex-col items-center justify-center bg-black bg-opacity-90 text-white z-50">
+            <h2 class="text-8xl font-extrabold text-yellow-400 mb-4 animate-pulse">STAGE CLEAR!</h2>
+            <p class="text-3xl mb-4 font-bold text-green-400">스테이지 <span id="cleared-stage" class="text-yellow-400"></span> 클리어!</p>
+            <p class="text-xl text-gray-300">다음 스테이지로 이동합니다...</p>
+        </div>
+
         <!-- 엔딩 화면 (최종 승리) -->
         <div id="ending-scene" class="hidden flex-col items-center justify-center bg-black bg-opacity-80 text-white">
             <h2 class="text-6xl font-extrabold text-yellow-400 mb-4">MISSION COMPLETE</h2>
@@ -141,7 +148,7 @@
         // --- Game State & Constants ---
 
         const GAME_CONFIG = {
-            STAGE_DURATION: 180, // 3분 = 180초
+            STAGE_DURATION: 60, // 1분 = 60초
             MAX_HEALTH: 20,
             PLAYER_SPEED: 0.1,
             ENEMY_SPEED: 0.05,
@@ -151,7 +158,7 @@
             BOSS_HEALTH_MULTIPLIER: 5, 
             ITEM_DROP_MIN: 5,
             ITEM_DROP_MAX: 10,
-            ENEMY_SPAWN_INTERVAL: 1.5, 
+            ENEMY_SPAWN_INTERVAL: 2.25, // 기본 50% 증가 (1.5 * 1.5) 
             SCROLL_SPEED: 10, 
             BOUNDS_X: 10, 
             BOUNDS_Y: 12, 
@@ -161,6 +168,9 @@
             HUNTER_CHANCE: 0.20, // 헌터 적 출현 확률 20%
             HUNTER_TRACKING_SPEED: 0.015, // 플레이어를 추적하는 속도 (수평)
             SCORE_PER_HUNTER_ENEMY: 2, // 헌터 적 점수
+            AGGRESSIVE_CHANCE: 0.15, // 공격적 적 출현 확률 15%
+            AGGRESSIVE_SPEED: 0.08, // 공격적 적의 이동 속도
+            SCORE_PER_AGGRESSIVE_ENEMY: 2, // 공격적 적 점수
             TOUCH_DEADZONE: 20, // 터치 이동 데드존 (픽셀)
             TOUCH_SENSITIVITY: 0.5, // 터치 이동 민감도
         };
@@ -189,6 +199,9 @@
         let enemyProjectiles = [];
         let items = [];
         let explosions = [];
+        
+        // 텍스처 캐시
+        let playerTexture, enemyTexture;
 
         // --- Sound Variables (Tone.js) ---
         let explosionSynth; 
@@ -200,6 +213,7 @@
             menu: document.getElementById('menu'),
             hud: document.getElementById('hud'),
             gameOver: document.getElementById('game-over'),
+            stageClear: document.getElementById('stage-clear'),
             endingScene: document.getElementById('ending-scene'),
             startButton: document.getElementById('start-button'),
             restartButton: document
@@ -211,6 +225,7 @@
             scoreDisplay: document.getElementById('score-display'), 
             finalStage: document.getElementById('final-stage'),
             finalScore: document.getElementById('final-score'),
+            clearedStage: document.getElementById('cleared-stage'),
             winScore: document.getElementById('win-score'),
             // 모바일 컨트롤 요소
             touchControls: document.getElementById('touch-controls'),
@@ -231,6 +246,46 @@
             return '█'.repeat(blocks) + '░'.repeat(10 - blocks);
         }
         
+        // --- Texture Loading Functions ---
+        
+        /** 특수 우주선용 일반 재질 생성 (회전 효과용) */
+        function createSpecialEnemyMaterial() {
+            return new THREE.MeshBasicMaterial({
+                map: enemyTexture,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+        }
+        
+        /** 텍스처 미리 로드 */
+        function preloadTextures() {
+            const textureLoader = new THREE.TextureLoader();
+            
+            // 플레이어 텍스처 로드
+            const playerImageURL = 'https://raw.githubusercontent.com/parksiho/space/main/pum2.png';
+            playerTexture = textureLoader.load(playerImageURL, 
+                () => {
+                    console.log("Player texture preloaded successfully.");
+                },
+                undefined,
+                (err) => {
+                    console.error("Error preloading player texture:", err);
+                }
+            );
+            
+            // 적 텍스처 로드
+            const enemyImageURL = 'https://raw.githubusercontent.com/parksiho/space/main/puj1.png';
+            enemyTexture = textureLoader.load(enemyImageURL, 
+                () => {
+                    console.log("Enemy texture preloaded successfully.");
+                },
+                undefined,
+                (err) => {
+                    console.error("Error preloading enemy texture:", err);
+                }
+            );
+        }
+
         // --- Sound Functions (Tone.js) ---
 
         /** 사운드 초기화 */
@@ -262,14 +317,20 @@
 
         // --- Object Creation ---
 
-        /** 플레이어 우주선 생성 (2D 스타일) */
+        /** 플레이어 우주선 생성 (2D 스타일) - 이미지로 교체됨 */
         function createPlayer() {
-            const geometry = new THREE.ConeGeometry(0.8, 2.5, 4); 
-            const material = new THREE.MeshPhongMaterial({
-                color: 0x00ffcc,
-                specular: 0xffffff,
-                shininess: 50,
+            // 원래 크기 유지 (ConeGeometry 0.8 반지름, 2.5 높이와 비슷한 크기)
+            const sizeW = 1.6; 
+            const sizeH = 2.5; 
+
+            // PlaneGeometry를 생성하고 미리 로드된 텍스처를 매핑합니다.
+            const geometry = new THREE.PlaneGeometry(sizeW, sizeH); 
+            const material = new THREE.MeshBasicMaterial({
+                map: playerTexture,
+                transparent: true, // 이미지 투명도 처리
+                side: THREE.DoubleSide
             });
+
             player = new THREE.Mesh(geometry, material);
             player.position.set(0, -GAME_CONFIG.BOUNDS_Y + 2, 0); 
             player.name = 'player';
@@ -277,43 +338,33 @@
             scene.add(player);
         }
 
-        /** 적 우주선 생성 (2D 스타일) */
+        /** 적 우주선 생성 (2D 스타일) - 이미지로 교체됨 */
         function createEnemy(isBoss = false) {
-            // 보스가 아닐 때만 스페셜 적 또는 헌터 적 출현 기회
+            // 보스가 아닐 때만 스페셜 적, 헌터 적, 공격적 적 출현 기회
             const isSpecial = !isBoss && Math.random() < GAME_CONFIG.SPECIAL_ENEMY_CHANCE; 
             const isHunter = !isBoss && !isSpecial && Math.random() < GAME_CONFIG.HUNTER_CHANCE;
-
-            let geometry, color;
-            let shininess;
+            const isAggressive = !isBoss && !isSpecial && !isHunter && Math.random() < GAME_CONFIG.AGGRESSIVE_CHANCE;
             
-            // 일반 적과 스페셜 적을 위한 비행접시 모양의 지오메트리 정의
-            const saucerGeometry = new THREE.CylinderGeometry(1, 0.5, 0.3, 16); // 반지름 1, 하단 반지름 0.5, 높이 0.3
-            saucerGeometry.rotateX(Math.PI / 2); // XY 평면에 눕히기
-            saucerGeometry.scale(0.8, 0.8, 0.8); // 크기 조정
-
+            let sizeW, sizeH;
+            
+            // 원래 크기 유지 (비행접시 크기와 비슷하게)
             if (isBoss) {
-                geometry = new THREE.SphereGeometry(2, 16, 16);
-                color = 0xff0000;
-                shininess = 30;
-            } else if (isSpecial) {
-                geometry = saucerGeometry; // 스페셜 적: 비행접시 형태
-                color = 0xffd700; // Special: Gold
-                shininess = 80;
-            } else if (isHunter) {
-                geometry = new THREE.BoxGeometry(1, 1, 1); // Hunter: Box shape (구분 위해 유지)
-                color = 0x00ffff; // Hunter: Cyan color
-                shininess = 80;
+                sizeW = 4.0; // 보스는 더 크게
+                sizeH = 4.0;
             } else {
-                geometry = saucerGeometry; // 일반 적: 비행접시 형태
-                color = 0xcc00ff; // Normal: Purple
-                shininess = 30;
+                sizeW = 1.6; // 일반 적 크기 (원래 비행접시 크기와 비슷)
+                sizeH = 1.6;
             }
 
-            const material = new THREE.MeshPhongMaterial({
-                color: color,
-                specular: 0xffffff,
-                shininess: shininess,
-            });
+            // PlaneGeometry를 생성하고 미리 로드된 텍스처를 매핑합니다.
+            const geometry = new THREE.PlaneGeometry(sizeW, sizeH); 
+            const material = isSpecial 
+                ? createSpecialEnemyMaterial() // 특수 우주선은 발광 효과
+                : new THREE.MeshBasicMaterial({
+                    map: enemyTexture,
+                    transparent: true, // 이미지 투명도 처리
+                    side: THREE.DoubleSide
+                });
             const enemy = new THREE.Mesh(geometry, material);
 
             // 초기 위치
@@ -324,19 +375,30 @@
             );
             enemy.position.copy(pos);
 
-            enemy.name = isBoss ? 'boss' : (isSpecial ? 'special_enemy' : (isHunter ? 'hunter_enemy' : 'enemy'));
+            enemy.name = isBoss ? 'boss' : (isSpecial ? 'special_enemy' : (isHunter ? 'hunter_enemy' : (isAggressive ? 'aggressive_enemy' : 'enemy')));
             enemy.isHunter = isHunter; // 헌터 타입 플래그 추가
+            enemy.isAggressive = isAggressive; // 공격적 타입 플래그 추가
             
-            // 헌터 적은 일반 적보다 체력이 높고, 일반 적보다 느리게 하강
-            enemy.health = isBoss ? 5 * gameState.stage * GAME_CONFIG.BOSS_HEALTH_MULTIPLIER : (isSpecial ? gameState.stage * 2 : (isHunter ? gameState.stage * 1.5 : gameState.stage));
+            // 특수 우주선 회전 효과를 위한 속성 추가
+            if (isSpecial) {
+                enemy.isSpecial = true;
+                enemy.rotationSpeed = 0.1; // 회전 속도
+            }
+            
+            // 헌터 적은 일반 적보다 체력이 높고, 공격적 적은 더 높은 체력과 빠른 속도
+            enemy.health = isBoss ? 5 * gameState.stage * GAME_CONFIG.BOSS_HEALTH_MULTIPLIER : 
+                          (isSpecial ? gameState.stage * 2 : 
+                          (isHunter ? gameState.stage * 1.5 : 
+                          (isAggressive ? gameState.stage * 1.8 : gameState.stage)));
             enemy.maxHealth = enemy.health;
             enemy.canFire = true;
             
-            // 헌터 적은 일반 적보다 느리게 하강 (속도 조정)
-            enemy.speed = isHunter ? GAME_CONFIG.ENEMY_SPEED * 0.7 : GAME_CONFIG.ENEMY_SPEED;
+            // 헌터 적은 일반 적보다 느리게 하강, 공격적 적은 빠르게 이동
+            enemy.speed = isHunter ? GAME_CONFIG.ENEMY_SPEED * 0.7 : 
+                         (isAggressive ? GAME_CONFIG.AGGRESSIVE_SPEED : GAME_CONFIG.ENEMY_SPEED);
             
-            // 적 좌우 이동 속성 (헌터는 플레이어를 추적하므로 랜덤 좌우 이동은 필요 없음)
-            if (!isBoss && !isHunter) {
+            // 적 좌우 이동 속성 (헌터와 공격적 적은 플레이어를 추적하므로 랜덤 좌우 이동은 필요 없음)
+            if (!isBoss && !isHunter && !isAggressive) {
                 enemy.directionX = (Math.random() < 0.5 ? 1 : -1); 
                 enemy.horizontalSpeed = GAME_CONFIG.ENEMY_HORIZONTAL_SPEED;
             }
@@ -351,14 +413,20 @@
             isEnemy = false,
             weaponLevel = 1
         ) {
-            const size = isEnemy ? 0.2 : 0.2 + weaponLevel * 0.05;
+            const size = isEnemy ? 0.4 : 0.2 + weaponLevel * 0.05;
             const color = isEnemy
-                ? 0xff5555
+                ? 0xff0000  // 더 밝고 선명한 빨간색
                 : [0x00ffcc, 0x00aaff, 0xffaa00, 0xff00ff, 0xffffff][
                       Math.min(weaponLevel - 1, 4)
                   ];
             const geometry = new THREE.SphereGeometry(size, 8, 8);
-            const material = new THREE.MeshBasicMaterial({ color: color });
+            const material = isEnemy 
+                ? new THREE.MeshPhongMaterial({ 
+                    color: color,
+                    emissive: color,  // 발광 효과 추가
+                    emissiveIntensity: 0.3  // 발광 강도
+                  })
+                : new THREE.MeshBasicMaterial({ color: color });
             const projectile = new THREE.Mesh(geometry, material);
 
             let startPos = shooter.position.clone();
@@ -473,15 +541,18 @@
         function initThree() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x0a0a1a); 
+            
+            // 텍스처 미리 로드
+            preloadTextures();
 
             // 별 배경 (Starfield)
             const starGeometry = new THREE.BufferGeometry();
-            const starCount = 5000;
+            const starCount = 8000; // 별 개수 증가
             const starPositions = [];
             for (let i = 0; i < starCount; i++) {
                 starPositions.push(
-                    (Math.random() - 0.5) * 200, 
-                    (Math.random() - 0.5) * 200, 
+                    (Math.random() - 0.5) * GAME_CONFIG.BOUNDS_X * 2, // X 범위를 게임 경계에 맞춤
+                    (Math.random() - 0.5) * GAME_CONFIG.BOUNDS_Y * 4, // Y 범위를 중앙 기준으로 위아래 균등 분포
                     0 
                 );
             }
@@ -635,14 +706,20 @@
                 arr.length = 0;
             });
             
+            // 배경 별들을 자연스럽게 재배치 (스테이지 전환 시 배경이 잘리지 않도록)
+            resetBackgroundSmoothly();
+            
             if (!player) {
                 createPlayer();
             }
             player.position.set(0, -GAME_CONFIG.BOUNDS_Y + 2, 0); 
             player.health = GAME_CONFIG.MAX_HEALTH;
             
-            // 스테이지 상태 초기화
-            gameState.timeRemaining = GAME_CONFIG.STAGE_DURATION;
+            // 게임 상태의 체력도 업데이트
+            gameState.health = GAME_CONFIG.MAX_HEALTH;
+            
+            // 스테이지 상태 초기화 (스테이지당 +10초씩 증가)
+            gameState.timeRemaining = GAME_CONFIG.STAGE_DURATION + (gameState.stage - 1) * 10;
             gameState.isBossSpawned = false;
             gameState.enemiesDestroyed = 0;
             gameState.enemiesToDropItem = Math.floor(
@@ -680,17 +757,26 @@
             player.position.x += moveX;
             player.position.y += moveY;
 
-            // 경계 제한 
+            // 경계 제한 (우주선 크기 고려)
             const boundsX = GAME_CONFIG.BOUNDS_X;
             const boundsY = GAME_CONFIG.BOUNDS_Y;
+            const playerWidth = 1.6; // 플레이어 우주선 가로 크기
+            const playerHeight = 2.5; // 플레이어 우주선 세로 크기
             
-            player.position.x = Math.max(-boundsX, Math.min(boundsX, player.position.x));
-            player.position.y = Math.max(-boundsY + 2, Math.min(boundsY * 0.8, player.position.y));
+            // 좌우 경계: 우주선이 화면 밖으로 나가지 않도록 크기의 절반만큼 여유를 둠
+            player.position.x = Math.max(-boundsX + playerWidth/2, Math.min(boundsX - playerWidth/2, player.position.x));
+            // 상하 경계: 우주선이 화면 밖으로 나가지 않도록 크기의 절반만큼 여유를 둠
+            player.position.y = Math.max(-boundsY + 2 + playerHeight/2, Math.min(boundsY * 0.8 - playerHeight/2, player.position.y));
         }
 
         function enemySpawning(delta) {
             const now = clock.getElapsedTime();
-            if (now - gameState.lastSpawnTime > GAME_CONFIG.ENEMY_SPAWN_INTERVAL) {
+            
+            // 스테이지에 따른 적 출현 간격 조정 (스테이지당 5% 감소)
+            const stageMultiplier = Math.max(0.5, 1.0 - (gameState.stage - 1) * 0.05);
+            const currentSpawnInterval = GAME_CONFIG.ENEMY_SPAWN_INTERVAL * stageMultiplier;
+            
+            if (now - gameState.lastSpawnTime > currentSpawnInterval) {
                 if (!gameState.isBossSpawned && gameState.timeRemaining > 0) {
                     createEnemy();
                     gameState.lastSpawnTime = now;
@@ -711,10 +797,37 @@
             for (let i = 1; i < positions.length; i += 3) {
                 positions[i] -= speed * delta; 
 
+                // 별이 화면 아래로 완전히 사라지면 위쪽으로 재배치
                 if (positions[i] < -GAME_CONFIG.BOUNDS_Y * 2) {
                     positions[i] = GAME_CONFIG.BOUNDS_Y * 2;
                     positions[i - 1] = (Math.random() - 0.5) * GAME_CONFIG.BOUNDS_X * 2; 
                 }
+            }
+            backgroundStars.geometry.attributes.position.needsUpdate = true;
+        }
+
+        /** 배경 별들 초기화 */
+        function resetBackground() {
+            const positions = backgroundStars.geometry.attributes.position.array;
+            
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i] = (Math.random() - 0.5) * GAME_CONFIG.BOUNDS_X * 2; // X 위치
+                positions[i + 1] = (Math.random() - 0.5) * GAME_CONFIG.BOUNDS_Y * 4; // Y 위치 (중앙 기준 위아래 균등 분포)
+                positions[i + 2] = 0; // Z 위치
+            }
+            backgroundStars.geometry.attributes.position.needsUpdate = true;
+        }
+
+        /** 배경 별들을 자연스럽게 재배치 (스테이지 전환용) */
+        function resetBackgroundSmoothly() {
+            const positions = backgroundStars.geometry.attributes.position.array;
+            
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i] = (Math.random() - 0.5) * GAME_CONFIG.BOUNDS_X * 2; // X 위치
+                // Y 위치를 화면 전체에 고르게 분포 (중앙 기준으로 위아래 균등 분포)
+                const yRange = GAME_CONFIG.BOUNDS_Y * 4; // 화면 높이의 4배 범위
+                positions[i + 1] = (Math.random() - 0.5) * yRange; // 중앙을 기준으로 위아래 균등 분포
+                positions[i + 2] = 0; // Z 위치
             }
             backgroundStars.geometry.attributes.position.needsUpdate = true;
         }
@@ -737,12 +850,14 @@
                     createExplosion(enemy.position, 0xff0000); 
                     playExplosionSound(); // 폭발음 재생
 
-                    // 점수 획득: 스페셜 3점, 헌터 2점, 일반 1점
+                    // 점수 획득: 스페셜 3점, 헌터/공격적 2점, 일반 1점
                     let points = GAME_CONFIG.SCORE_PER_ENEMY;
                     if (enemy.name === 'special_enemy') {
                          points = GAME_CONFIG.SCORE_PER_SPECIAL_ENEMY;
                     } else if (enemy.name === 'hunter_enemy') {
                         points = GAME_CONFIG.SCORE_PER_HUNTER_ENEMY;
+                    } else if (enemy.name === 'aggressive_enemy') {
+                        points = GAME_CONFIG.SCORE_PER_AGGRESSIVE_ENEMY;
                     }
                     gameState.score += points;
 
@@ -772,16 +887,20 @@
                         if (enemy.health <= 0) {
                             // 적 파괴
                             scene.remove(enemy);
-                            const explosionColor = enemy.name === 'special_enemy' ? 0xffd700 : (enemy.name === 'hunter_enemy' ? 0x00ffff : 0xffa500);
+                            const explosionColor = enemy.name === 'special_enemy' ? 0xffd700 : 
+                                                  (enemy.name === 'hunter_enemy' ? 0x00ffff : 
+                                                  (enemy.name === 'aggressive_enemy' ? 0xff4444 : 0xffa500));
                             createExplosion(enemy.position, explosionColor);
                             playExplosionSound(); // 폭발음 재생
 
-                            // 점수 획득: 스페셜 3점, 헌터 2점, 일반 1점
+                            // 점수 획득: 스페셜 3점, 헌터/공격적 2점, 일반 1점
                             let points = GAME_CONFIG.SCORE_PER_ENEMY;
                             if (enemy.name === 'special_enemy') {
                                  points = GAME_CONFIG.SCORE_PER_SPECIAL_ENEMY;
                             } else if (enemy.name === 'hunter_enemy') {
                                 points = GAME_CONFIG.SCORE_PER_HUNTER_ENEMY;
+                            } else if (enemy.name === 'aggressive_enemy') {
+                                points = GAME_CONFIG.SCORE_PER_AGGRESSIVE_ENEMY;
                             }
                             gameState.score += points;
 
@@ -798,17 +917,9 @@
                             
                             enemies.splice(i, 1);
                             
-                            // 보스가 파괴된 경우 다음 스테이지로
+                            // 보스가 파괴된 경우 스테이지 클리어 화면으로
                             if (enemy.name === 'boss') {
-                                if (gameState.stage < 10) {
-                                    setTimeout(() => {
-                                        gameState.stage++;
-                                        setupStage();
-                                    }, 3000);
-                                } else {
-                                    // 최종 스테이지 클리어
-                                    transitionToEnding();
-                                }
+                                transitionToStageClear();
                             }
                         }
                         return false; 
@@ -822,6 +933,11 @@
             // 2. 적 및 적 발사체 업데이트
             const now = clock.getElapsedTime();
             enemies = enemies.filter(enemy => {
+                // 특수 우주선 회전 효과 업데이트
+                if (enemy.isSpecial) {
+                    enemy.rotation.z += enemy.rotationSpeed * delta * 60; // Z축 회전
+                }
+                
                 // 1. 적 이동 로직
                 if (enemy.name === 'boss') {
                     // 보스 로직: 플레이어 방향으로 느리게 이동
@@ -849,6 +965,14 @@
                     enemy.position.x = Math.max(-GAME_CONFIG.BOUNDS_X + 1, Math.min(GAME_CONFIG.BOUNDS_X - 1, enemy.position.x));
 
 
+                } else if (enemy.isAggressive) {
+                    // 공격적 적 로직: 플레이어를 직접적으로 추적하며 빠르게 이동
+                    const targetDir = player.position.clone().sub(enemy.position).normalize();
+                    enemy.position.addScaledVector(targetDir, enemy.speed * 60 * delta);
+                    
+                    // X축 경계 제한
+                    enemy.position.x = Math.max(-GAME_CONFIG.BOUNDS_X + 1, Math.min(GAME_CONFIG.BOUNDS_X - 1, enemy.position.x));
+
                 } else {
                     // 일반 적 / 스페셜 적 로직 (Saucer)
                     // 좌우 움직임 적용
@@ -864,7 +988,9 @@
 
 
                 // 적 발사
-                const fireRate = enemy.name === 'boss' ? 0.5 : (enemy.isHunter ? 1.5 : 2); // 헌터 적은 일반 적보다 조금 빠르게 발사
+                const fireRate = enemy.name === 'boss' ? 0.5 : 
+                                (enemy.isHunter ? 1.5 : 
+                                (enemy.isAggressive ? 1.0 : 2)); // 공격적 적은 빠르게 발사
                 if (now - (enemy.lastFireTime || 0) > fireRate) {
                     createProjectile(enemy, true);
                     enemy.lastFireTime = now;
@@ -963,7 +1089,7 @@
         }
 
         function gameLoop() {
-            if (gameState.state === 'MENU' || gameState.state === 'GAME_OVER' || gameState.state === 'ENDING') {
+            if (gameState.state === 'MENU' || gameState.state === 'GAME_OVER' || gameState.state === 'ENDING' || gameState.state === 'STAGE_CLEAR') {
                 renderer.render(scene, camera);
                 requestAnimationFrame(gameLoop);
                 return;
@@ -1000,18 +1126,46 @@
 
         function transitionToPlay() {
             gameState.state = 'PLAYING';
+            
+            // 모든 화면 숨기기
             html.menu.classList.add('hidden');
             html.gameOver.classList.add('hidden');
+            html.stageClear.classList.add('hidden');
             html.endingScene.classList.add('hidden');
+            
+            // 게임 화면 표시
             html.hud.classList.remove('hidden');
             html.touchControls.classList.remove('hidden'); // 모바일 컨트롤 표시
 
             setupStage();
         }
 
+        function transitionToStageClear() {
+            gameState.state = 'STAGE_CLEAR';
+            html.hud.classList.add('hidden');
+            html.stageClear.classList.remove('hidden');
+            html.touchControls.classList.add('hidden'); // 모바일 컨트롤 숨김
+            html.clearedStage.textContent = gameState.stage;
+            
+            // 스테이지 클리어 시점의 시간을 기록
+            const clearTime = clock.getElapsedTime();
+            
+            // 3초 후 다음 스테이지로 이동
+            setTimeout(() => {
+                if (gameState.stage < 10) {
+                    gameState.stage++;
+                    transitionToPlay();
+                } else {
+                    // 최종 스테이지 클리어
+                    transitionToEnding();
+                }
+            }, 3000);
+        }
+
         function transitionToGameOver() {
             gameState.state = 'GAME_OVER';
             html.hud.classList.add('hidden');
+            html.stageClear.classList.add('hidden');
             html.gameOver.classList.remove('hidden');
             html.touchControls.classList.add('hidden'); // 모바일 컨트롤 숨김
             html.finalStage.textContent = gameState.stage;
@@ -1021,6 +1175,7 @@
         function transitionToEnding() {
             gameState.state = 'ENDING';
             html.hud.classList.add('hidden');
+            html.stageClear.classList.add('hidden');
             html.endingScene.classList.remove('hidden');
             html.touchControls.classList.add('hidden'); // 모바일 컨트롤 숨김
             html.winScore.textContent = gameState.score; 
@@ -1033,10 +1188,12 @@
             gameState.weaponLevel = 1;
             gameState.enemiesDestroyed = 0;
             gameState.enemiesToDropItem = 0;
-            gameState.score = 0; 
+            gameState.score = 0;
+            gameState.timeRemaining = GAME_CONFIG.STAGE_DURATION; // 첫 스테이지는 기본 시간 
 
             html.menu.classList.remove('hidden');
             html.gameOver.classList.add('hidden');
+            html.stageClear.classList.add('hidden');
             html.endingScene.classList.add('hidden');
             html.touchControls.classList.add('hidden'); // 메뉴에서는 숨김
             
@@ -1048,9 +1205,11 @@
         }
 
         // --- Initialize Game ---
-        initThree();
-        createPlayer(); 
-        gameLoop(); 
+        window.onload = function() {
+            initThree();
+            createPlayer(); 
+            gameLoop(); 
+        } 
     </script>
 </body>
 </html>
