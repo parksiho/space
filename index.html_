@@ -262,40 +262,14 @@
 
         // --- Object Creation ---
 
-        /** 플레이어 우주선 생성 (2D 스타일) - 이미지로 교체됨 */
+        /** 플레이어 우주선 생성 (2D 스타일) */
         function createPlayer() {
-            // 사용자 요청 이미지 경로 (Raw GitHub URL 사용)
-            const imageURL = 'https://raw.githubusercontent.com/parksiho/space/main/pum1.png';
-            // 기존 3D 모델(반지름 0.8, 높이 2.5)과 비슷한 크기로 조정
-            const sizeW = 2.0; 
-            const sizeH = 3.0; 
-
-            // TextureLoader를 사용하여 이미지 로드
-            const textureLoader = new THREE.TextureLoader();
-            const texture = textureLoader.load(imageURL, 
-                // 로드 성공 시
-                () => {
-                    console.log("Player image loaded successfully.");
-                },
-                // 로드 진행 중 (선택 사항)
-                undefined,
-                // 로드 실패 시
-                (err) => {
-                    console.error("Error loading player image. Using fallback color.", err);
-                    // 실패 시 대비책: 기본 색상의 PlaneGeometry 사용
-                    const fallbackMaterial = new THREE.MeshPhongMaterial({ color: 0x00ffcc });
-                    player.material = fallbackMaterial;
-                }
-            );
-
-            // PlaneGeometry를 생성하고 텍스처를 매핑합니다.
-            const geometry = new THREE.PlaneGeometry(sizeW, sizeH); 
-            const material = new THREE.MeshBasicMaterial({
-                map: texture,
-                transparent: true, // 이미지 투명도 처리
-                side: THREE.DoubleSide
+            const geometry = new THREE.ConeGeometry(0.8, 2.5, 4); 
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x00ffcc,
+                specular: 0xffffff,
+                shininess: 50,
             });
-
             player = new THREE.Mesh(geometry, material);
             player.position.set(0, -GAME_CONFIG.BOUNDS_Y + 2, 0); 
             player.name = 'player';
@@ -312,7 +286,7 @@
             let geometry, color;
             let shininess;
             
-            // 일반 적과 스페셜 적을 위한 비행접시 모양의 지오메트리 정의 (Saucer)
+            // 일반 적과 스페셜 적을 위한 비행접시 모양의 지오메트리 정의
             const saucerGeometry = new THREE.CylinderGeometry(1, 0.5, 0.3, 16); // 반지름 1, 하단 반지름 0.5, 높이 0.3
             saucerGeometry.rotateX(Math.PI / 2); // XY 평면에 눕히기
             saucerGeometry.scale(0.8, 0.8, 0.8); // 크기 조정
@@ -1074,11 +1048,9 @@
         }
 
         // --- Initialize Game ---
-        window.onload = function() {
-            initThree();
-            createPlayer(); 
-            gameLoop(); 
-        }
+        initThree();
+        createPlayer(); 
+        gameLoop(); 
     </script>
 </body>
 </html>
