@@ -200,6 +200,8 @@
         let items = [];
         let explosions = [];
         
+        // 텍스처 캐시
+        let playerTexture, enemyTexture;
 
         // --- Sound Variables (Tone.js) ---
         let explosionSynth; 
@@ -247,6 +249,42 @@
         // --- Texture Loading Functions ---
         
         /** 특수 우주선용 일반 재질 생성 (회전 효과용) */
+        function createSpecialEnemyMaterial() {
+            return new THREE.MeshBasicMaterial({
+                map: enemyTexture,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+        }
+        
+        /** 텍스처 미리 로드 */
+        function preloadTextures() {
+            const textureLoader = new THREE.TextureLoader();
+            
+            // 플레이어 텍스처 로드
+            const playerImageURL = 'https://raw.githubusercontent.com/parksiho/space/main/pum2.png';
+            playerTexture = textureLoader.load(playerImageURL, 
+                () => {
+                    console.log("Player texture preloaded successfully.");
+                },
+                undefined,
+                (err) => {
+                    console.error("Error preloading player texture:", err);
+                }
+            );
+            
+            // 적 텍스처 로드
+            const enemyImageURL = 'https://raw.githubusercontent.com/parksiho/space/main/puj1.png';
+            enemyTexture = textureLoader.load(enemyImageURL, 
+                () => {
+                    console.log("Enemy texture preloaded successfully.");
+                },
+                undefined,
+                (err) => {
+                    console.error("Error preloading enemy texture:", err);
+                }
+            );
+        }
 
         // --- Sound Functions (Tone.js) ---
 
@@ -279,205 +317,55 @@
 
         // --- Object Creation ---
 
-        /** 플레이어 비행기 생성 (기하학적 도형) */
+        /** 플레이어 우주선 생성 (2D 스타일) - 이미지로 교체됨 */
         function createPlayer() {
-            // 비행기 모양을 만들기 위한 그룹
-            player = new THREE.Group();
-            
-            // 메인 바디 (원뿔 모양)
-            const bodyGeometry = new THREE.ConeGeometry(0.4, 1.2, 8);
-            const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 }); // 초록색
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            body.position.y = 0.2;
-            player.add(body);
-            
-            // 날개 (평면 사각형)
-            const wingGeometry = new THREE.PlaneGeometry(1.2, 0.3);
-            const wingMaterial = new THREE.MeshBasicMaterial({ color: 0x00cc00, side: THREE.DoubleSide });
-            const wing = new THREE.Mesh(wingGeometry, wingMaterial);
-            wing.position.y = 0.1;
-            player.add(wing);
-            
-            // 꼬리 날개
-            const tailGeometry = new THREE.PlaneGeometry(0.4, 0.6);
-            const tailMaterial = new THREE.MeshBasicMaterial({ color: 0x00aa00, side: THREE.DoubleSide });
-            const tail = new THREE.Mesh(tailGeometry, tailMaterial);
-            tail.position.y = -0.3;
-            tail.position.z = 0.1;
-            player.add(tail);
-            
-            // 엔진 불꽃 효과
-            const flameGeometry = new THREE.ConeGeometry(0.15, 0.4, 6);
-            const flameMaterial = new THREE.MeshBasicMaterial({ color: 0xff4400 }); // 주황색 불꽃
-            const flame = new THREE.Mesh(flameGeometry, flameMaterial);
-            flame.position.y = -0.8;
-            player.add(flame);
+            // 원래 크기 유지 (ConeGeometry 0.8 반지름, 2.5 높이와 비슷한 크기)
+            const sizeW = 1.6; 
+            const sizeH = 2.5; 
 
+            // PlaneGeometry를 생성하고 미리 로드된 텍스처를 매핑합니다.
+            const geometry = new THREE.PlaneGeometry(sizeW, sizeH); 
+            const material = new THREE.MeshBasicMaterial({
+                map: playerTexture,
+                transparent: true, // 이미지 투명도 처리
+                side: THREE.DoubleSide
+            });
+
+            player = new THREE.Mesh(geometry, material);
             player.position.set(0, -GAME_CONFIG.BOUNDS_Y + 2, 0); 
             player.name = 'player';
             player.health = gameState.maxHealth;
             scene.add(player);
         }
 
-        /** 스테이지별 적 디자인 생성 */
-        function createEnemyDesign(stage, isBoss = false, isSpecial = false) {
-            const enemy = new THREE.Group();
-            const scale = isBoss ? 4.0 : 2.0;
-            
-            // 스테이지별 디자인 패턴
-            const designPattern = stage % 3; // 0, 1, 2 패턴 반복
-            
-            if (designPattern === 0) {
-                // 패턴 1: 기본 비행기 디자인
-                createBasicAircraft(enemy, scale, isBoss, isSpecial);
-            } else if (designPattern === 1) {
-                // 패턴 2: 삼각형 디자인
-                createTriangularAircraft(enemy, scale, isBoss, isSpecial);
-            } else {
-                // 패턴 3: 원형 디자인
-                createCircularAircraft(enemy, scale, isBoss, isSpecial);
-            }
-            
-            return enemy;
-        }
-        
-        /** 기본 비행기 디자인 */
-        function createBasicAircraft(enemy, scale, isBoss, isSpecial) {
-            // 메인 바디 (원뿔 모양, 아래쪽을 향함)
-            const bodyGeometry = new THREE.ConeGeometry(0.3 * scale, 0.8 * scale, 8);
-            const bodyMaterial = new THREE.MeshBasicMaterial({ 
-                color: isSpecial ? 0xffaa00 : (isBoss ? 0xff0000 : 0xff4444)
-            });
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            body.position.y = -0.1 * scale;
-            body.rotation.z = Math.PI;
-            enemy.add(body);
-            
-            // 날개 (평면 사각형)
-            const wingGeometry = new THREE.PlaneGeometry(0.8 * scale, 0.2 * scale);
-            const wingMaterial = new THREE.MeshBasicMaterial({ 
-                color: isSpecial ? 0xff8800 : (isBoss ? 0xcc0000 : 0xcc3333), 
-                side: THREE.DoubleSide 
-            });
-            const wing = new THREE.Mesh(wingGeometry, wingMaterial);
-            wing.position.y = 0;
-            enemy.add(wing);
-            
-            // 꼬리 날개
-            const tailGeometry = new THREE.PlaneGeometry(0.3 * scale, 0.4 * scale);
-            const tailMaterial = new THREE.MeshBasicMaterial({ 
-                color: isSpecial ? 0xff6600 : (isBoss ? 0xaa0000 : 0xaa2222), 
-                side: THREE.DoubleSide 
-            });
-            const tail = new THREE.Mesh(tailGeometry, tailMaterial);
-            tail.position.y = 0.2 * scale;
-            tail.position.z = 0.05 * scale;
-            enemy.add(tail);
-            
-            // 엔진 불꽃 효과
-            if (isBoss || isSpecial) {
-                const flameGeometry = new THREE.ConeGeometry(0.1 * scale, 0.3 * scale, 6);
-                const flameMaterial = new THREE.MeshBasicMaterial({ color: 0xff4400 });
-                const flame = new THREE.Mesh(flameGeometry, flameMaterial);
-                flame.position.y = 0.5 * scale;
-                enemy.add(flame);
-            }
-        }
-        
-        /** 삼각형 비행기 디자인 */
-        function createTriangularAircraft(enemy, scale, isBoss, isSpecial) {
-            // 메인 바디 (삼각형 프리즘)
-            const bodyGeometry = new THREE.ConeGeometry(0.4 * scale, 0.9 * scale, 3);
-            const bodyMaterial = new THREE.MeshBasicMaterial({ 
-                color: isSpecial ? 0x00ffaa : (isBoss ? 0x00ff00 : 0x44ff44)
-            });
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            body.position.y = -0.1 * scale;
-            body.rotation.z = Math.PI;
-            enemy.add(body);
-            
-            // 날개 (삼각형)
-            const wingGeometry = new THREE.ConeGeometry(0.6 * scale, 0.15 * scale, 3);
-            const wingMaterial = new THREE.MeshBasicMaterial({ 
-                color: isSpecial ? 0x00cc88 : (isBoss ? 0x00cc00 : 0x33cc33)
-            });
-            const wing = new THREE.Mesh(wingGeometry, wingMaterial);
-            wing.position.y = 0;
-            wing.rotation.z = Math.PI;
-            enemy.add(wing);
-            
-            // 꼬리 날개 (작은 삼각형)
-            const tailGeometry = new THREE.ConeGeometry(0.2 * scale, 0.3 * scale, 3);
-            const tailMaterial = new THREE.MeshBasicMaterial({ 
-                color: isSpecial ? 0x00aa66 : (isBoss ? 0x00aa00 : 0x22aa22)
-            });
-            const tail = new THREE.Mesh(tailGeometry, tailMaterial);
-            tail.position.y = 0.2 * scale;
-            tail.position.z = 0.05 * scale;
-            tail.rotation.z = Math.PI;
-            enemy.add(tail);
-            
-            // 엔진 불꽃 효과
-            if (isBoss || isSpecial) {
-                const flameGeometry = new THREE.ConeGeometry(0.12 * scale, 0.35 * scale, 3);
-                const flameMaterial = new THREE.MeshBasicMaterial({ color: 0xff6600 });
-                const flame = new THREE.Mesh(flameGeometry, flameMaterial);
-                flame.position.y = 0.5 * scale;
-                enemy.add(flame);
-            }
-        }
-        
-        /** 원형 비행기 디자인 */
-        function createCircularAircraft(enemy, scale, isBoss, isSpecial) {
-            // 메인 바디 (구 모양)
-            const bodyGeometry = new THREE.SphereGeometry(0.3 * scale, 8, 6);
-            const bodyMaterial = new THREE.MeshBasicMaterial({ 
-                color: isSpecial ? 0xaa00ff : (isBoss ? 0xff00ff : 0xff44ff)
-            });
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            body.position.y = 0;
-            enemy.add(body);
-            
-            // 날개 (원형 디스크)
-            const wingGeometry = new THREE.CylinderGeometry(0.4 * scale, 0.4 * scale, 0.1 * scale, 8);
-            const wingMaterial = new THREE.MeshBasicMaterial({ 
-                color: isSpecial ? 0x8800cc : (isBoss ? 0xcc00cc : 0xcc33cc)
-            });
-            const wing = new THREE.Mesh(wingGeometry, wingMaterial);
-            wing.position.y = 0;
-            wing.rotation.x = Math.PI / 2;
-            enemy.add(wing);
-            
-            // 꼬리 날개 (작은 원형)
-            const tailGeometry = new THREE.CylinderGeometry(0.15 * scale, 0.15 * scale, 0.2 * scale, 6);
-            const tailMaterial = new THREE.MeshBasicMaterial({ 
-                color: isSpecial ? 0x6600aa : (isBoss ? 0xaa00aa : 0xaa22aa)
-            });
-            const tail = new THREE.Mesh(tailGeometry, tailMaterial);
-            tail.position.y = 0.3 * scale;
-            tail.position.z = 0.1 * scale;
-            tail.rotation.x = Math.PI / 2;
-            enemy.add(tail);
-            
-            // 엔진 불꽃 효과
-            if (isBoss || isSpecial) {
-                const flameGeometry = new THREE.SphereGeometry(0.08 * scale, 6, 4);
-                const flameMaterial = new THREE.MeshBasicMaterial({ color: 0xff8800 });
-                const flame = new THREE.Mesh(flameGeometry, flameMaterial);
-                flame.position.y = -0.4 * scale;
-                enemy.add(flame);
-            }
-        }
-
-        /** 적 비행기 생성 (스테이지별 디자인) */
+        /** 적 우주선 생성 (2D 스타일) - 이미지로 교체됨 */
         function createEnemy(isBoss = false) {
             // 보스가 아닐 때만 스페셜 적, 헌터 적, 공격적 적 출현 기회
             const isSpecial = !isBoss && Math.random() < GAME_CONFIG.SPECIAL_ENEMY_CHANCE; 
             const isHunter = !isBoss && !isSpecial && Math.random() < GAME_CONFIG.HUNTER_CHANCE;
             const isAggressive = !isBoss && !isSpecial && !isHunter && Math.random() < GAME_CONFIG.AGGRESSIVE_CHANCE;
             
-            // 스테이지별 디자인으로 적 생성
-            const enemy = createEnemyDesign(gameState.stage, isBoss, isSpecial);
+            let sizeW, sizeH;
+            
+            // 원래 크기 유지 (비행접시 크기와 비슷하게)
+            if (isBoss) {
+                sizeW = 4.0; // 보스는 더 크게
+                sizeH = 4.0;
+            } else {
+                sizeW = 1.6; // 일반 적 크기 (원래 비행접시 크기와 비슷)
+                sizeH = 1.6;
+            }
+
+            // PlaneGeometry를 생성하고 미리 로드된 텍스처를 매핑합니다.
+            const geometry = new THREE.PlaneGeometry(sizeW, sizeH); 
+            const material = isSpecial 
+                ? createSpecialEnemyMaterial() // 특수 우주선은 발광 효과
+                : new THREE.MeshBasicMaterial({
+                    map: enemyTexture,
+                    transparent: true, // 이미지 투명도 처리
+                    side: THREE.DoubleSide
+                });
+            const enemy = new THREE.Mesh(geometry, material);
 
             // 초기 위치
             const pos = new THREE.Vector3(
@@ -488,8 +376,8 @@
             enemy.position.copy(pos);
 
             enemy.name = isBoss ? 'boss' : (isSpecial ? 'special_enemy' : (isHunter ? 'hunter_enemy' : (isAggressive ? 'aggressive_enemy' : 'enemy')));
-            enemy.isHunter = isHunter;
-            enemy.isAggressive = isAggressive;
+            enemy.isHunter = isHunter; // 헌터 타입 플래그 추가
+            enemy.isAggressive = isAggressive; // 공격적 타입 플래그 추가
             
             // 특수 우주선 회전 효과를 위한 속성 추가
             if (isSpecial) {
@@ -528,8 +416,8 @@
             const size = isEnemy ? 0.4 : 0.2 + weaponLevel * 0.05;
             const color = isEnemy
                 ? 0xff0000  // 더 밝고 선명한 빨간색
-                : [0x00ffcc, 0x00aaff, 0xffaa00, 0xff00ff, 0xffffff, 0xff6600, 0x66ff00, 0x0066ff, 0xff0066, 0xffff00][
-                      Math.min(weaponLevel - 1, 9)
+                : [0x00ffcc, 0x00aaff, 0xffaa00, 0xff00ff, 0xffffff][
+                      Math.min(weaponLevel - 1, 4)
                   ];
             const geometry = new THREE.SphereGeometry(size, 8, 8);
             const material = isEnemy 
@@ -654,6 +542,9 @@
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x0a0a1a); 
             
+            // 텍스처 미리 로드
+            preloadTextures();
+
             // 별 배경 (Starfield)
             const starGeometry = new THREE.BufferGeometry();
             const starCount = 8000; // 별 개수 증가
@@ -796,7 +687,7 @@
                 createProjectile(player, false, gameState.weaponLevel);
                 gameState.lastPlayerFireTime = now;
 
-                // 무기 레벨에 따른 추가 미사일 발사
+                // 무기 레벨 3 이상이면 추가 미사일 발사 (좌우)
                 if (gameState.weaponLevel >= 3) {
                     const offset = 0.8;
                     const leftPos = player.position.clone().add(new THREE.Vector3(-offset, 1.5, 0));
@@ -804,26 +695,6 @@
 
                     createProjectile({ position: leftPos }, false, gameState.weaponLevel);
                     createProjectile({ position: rightPos }, false, gameState.weaponLevel);
-                }
-                
-                // 무기 레벨 6 이상이면 더 많은 미사일 발사 (대각선)
-                if (gameState.weaponLevel >= 6) {
-                    const offset = 1.2;
-                    const leftDiagPos = player.position.clone().add(new THREE.Vector3(-offset, 1.0, 0));
-                    const rightDiagPos = player.position.clone().add(new THREE.Vector3(offset, 1.0, 0));
-
-                    createProjectile({ position: leftDiagPos }, false, gameState.weaponLevel);
-                    createProjectile({ position: rightDiagPos }, false, gameState.weaponLevel);
-                }
-                
-                // 무기 레벨 9 이상이면 최대 화력 (사방으로 발사)
-                if (gameState.weaponLevel >= 9) {
-                    const offset = 1.6;
-                    const farLeftPos = player.position.clone().add(new THREE.Vector3(-offset, 0.5, 0));
-                    const farRightPos = player.position.clone().add(new THREE.Vector3(offset, 0.5, 0));
-
-                    createProjectile({ position: farLeftPos }, false, gameState.weaponLevel);
-                    createProjectile({ position: farRightPos }, false, gameState.weaponLevel);
                 }
             }
         }
@@ -889,8 +760,8 @@
             // 경계 제한 (우주선 크기 고려)
             const boundsX = GAME_CONFIG.BOUNDS_X;
             const boundsY = GAME_CONFIG.BOUNDS_Y;
-            const playerWidth = 1.2; // 플레이어 비행기 가로 크기 (날개 폭)
-            const playerHeight = 1.2; // 플레이어 비행기 세로 크기 (바디 높이)
+            const playerWidth = 1.6; // 플레이어 우주선 가로 크기
+            const playerHeight = 2.5; // 플레이어 우주선 세로 크기
             
             // 좌우 경계: 우주선이 화면 밖으로 나가지 않도록 크기의 절반만큼 여유를 둠
             player.position.x = Math.max(-boundsX + playerWidth/2, Math.min(boundsX - playerWidth/2, player.position.x));
@@ -1183,7 +1054,7 @@
                     if (item.name === 'health') {
                         gameState.health = Math.min(GAME_CONFIG.MAX_HEALTH, gameState.health + 3);
                     } else if (item.name === 'weapon') {
-                        gameState.weaponLevel = Math.min(10, gameState.weaponLevel + 1);
+                        gameState.weaponLevel = Math.min(5, gameState.weaponLevel + 1);
                     }
                     updateHUD();
                     return false; 
